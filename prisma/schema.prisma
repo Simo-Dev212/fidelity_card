@@ -1,0 +1,215 @@
+// Prisma schema for Multi-tenant Digital Loyalty Wallet Platform
+// Google Wallet first → Apple Wallet ready
+// Strict multi-tenant isolation via companyId on all relevant models
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────
+
+enum ProgramType {
+  POINTS
+  STAMPS
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum LoyaltyEventType {
+  JOIN
+  EARN
+  REDEEM
+  ADJUST
+  REFUND
+  EXPIRE
+  ADMIN_OVERRIDE
+  WEBHOOK
+}
+
+enum WalletProviderType {
+  GOOGLE
+  APPLE
+}
+
+enum WalletPassStatus {
+  PENDING
+  ACTIVE
+  UPDATED
+  FAILED
+  REVOKED
+}
+
+// ─────────────────────────────────────────────
+// Core Models
+// ─────────────────────────────────────────────
+
+model Company {
+  id             String   @id @default(cuid())
+  name           String
+  slug           String   @unique
+  /// Branding
+  logoUrl        String?
+  primaryColor   String?  @default("#1a73e8") // Google blue-ish default
+  secondaryColor String?  @default("#ffffff")
+  accentColor    String?
+  heroImageUrl   String?
+  /// Contact / meta
+  website        String?
+  supportEmail   String?
+  /// Soft delete / status
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  programs    Program[]
+  memberships Membership[]
+
+
+  @@index([slug])
+  @@map("companies")
+}
+
+model Program {
+  id          String      @id @default(cuid())
+  companyId   String
+  name        String
+  slug        String
+  type        ProgramType
+  description String?
+  /// Design overrides (can inherit from Company)
+  logoUrl     String?
+  heroImageUrl String?
+  primaryColor String?
+  secondaryColor String?
+  /// Flexible settings depending on type
+  /// POINTS example: { "pointsPerCurrency": 1, "currency": "EUR", "rewardThreshold": 100, "rewardDescription": "Free coffee" }
+  /// STAMPS example: { "stampsRequired": 10, "rewardDescription": "Free item", "stampIcon": "☕" }
+  settings    Json        @default("{}")
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  memberships Membership[]
+
+  @@unique([companyId, slug])
+  @@index([companyId])
+  @@map("programs")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  /// Auth provider identifiers (for OAuth)
+  googleId      String?   @unique
+  appleId       String?   @unique
+  /// Password hash (for email/password) – use argon2 or bcrypt
+  passwordHash  String?
+  /// Locale preference
+  locale        String    @default("en") // en | fr
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  memberships Membership[]
+
+
+  @@index([email])
+  @@map("users")
+}
+
+model Membership {
+  id          String           @id @default(cuid())
+  /// Unique wallet serial / ID – never reused
+  walletId    String           @unique
+  userId      String
+  programId   String
+  companyId   String           // denormalized for strong tenant isolation & query performance
+  /// Current state
+  balance     Int              @default(0) // points or stamps collected
+  status      MembershipStatus @default(ACTIVE)
+  /// Optional metadata (e.g. referral source, NFC card batch)
+  metadata    Json             @default("{}")
+  joinedAt    DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  program     Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  history     LoyaltyHistory[]
+  walletPass  WalletPass?
+
+  @@unique([userId, programId]) // one membership per user per program
+  @@index([companyId])
+  @@index([walletId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+model LoyaltyHistory {
+  id               String           @id @default(cuid())
+  membershipId     String
+  companyId        String           // tenant isolation
+  type             LoyaltyEventType
+  amount           Int              // + or - 
+  previousBalance  Int
+  newBalance       Int
+  reason           String?
+  /// Who triggered it: system, webhook, admin user id, etc.
+  actorId          String?
+  actorType        String?          // "system" | "webhook" | "admin" | "user"
+  metadata         Json             @default("{}")
+  createdAt        DateTime         @default(now())
+
+  membership       Membership       @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([membershipId])
+  @@index([companyId])
+  @@index([createdAt])
+  @@map("loyalty_history")
+}
+
+model WalletPass {
+  id            String            @id @default(cuid())
+  membershipId  String            @unique
+  companyId     String            // tenant isolation
+  provider      WalletProviderType
+  /// Google: LoyaltyObject resource id (issuerId.objectId)
+  /// Apple: pass serial / identifier
+  externalId    String
+  /// The "Save to Google Wallet" JWT or Apple pass URL
+  saveUrl       String?
+  status        WalletPassStatus  @default(PENDING)
+  lastSyncAt    DateTime?
+  lastError     String?
+  /// Full object snapshot for debugging / re-sync
+  lastPayload   Json?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  membership    Membership        @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([externalId])
+  @@map("wallet_passes")
+}
+
+// ─────────────────────────────────────────────
+// Optional: Session / Account tables if using Better Auth style
+// For Passport + JWT we keep it simple; sessions can be JWT only.
+// If switching to Better Auth later, add their tables here.
+// ─────────────────────────────────────────────
