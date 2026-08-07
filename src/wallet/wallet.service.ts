@@ -1,9 +1,7 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  WALLET_PROVIDER,
-  WalletProvider,
-} from './providers/wallet-provider.interface';
+import { WALLET_PROVIDER } from './providers/wallet-provider.interface';
+import type { WalletProvider } from './providers/wallet-provider.interface';
 import { Membership, WalletPassStatus, WalletProviderType } from '@prisma/client';
 
 @Injectable()
