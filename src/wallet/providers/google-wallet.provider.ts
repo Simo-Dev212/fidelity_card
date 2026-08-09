@@ -96,11 +96,12 @@ export class GoogleWalletProvider implements WalletProvider {
       };
     };
 
-    const primary = hexToRgb(program.primaryColor || company.primaryColor);
+       const primary = hexToRgb(program.primaryColor || company.primaryColor);
+    const rawLogoUrl = program.logoUrl || company.logoUrl;
     const logo =
-      program.logoUrl ||
-      company.logoUrl ||
-      'https://via.placeholder.com/200x200.png?text=Logo';
+      typeof rawLogoUrl === 'string' && !rawLogoUrl.includes('placeholder')
+        ? rawLogoUrl
+        : 'https://developers.google.com/static/wallet/images/logo.png';
 
     return {
       id: classId,
@@ -113,14 +114,20 @@ export class GoogleWalletProvider implements WalletProvider {
       },
       hexBackgroundColor: program.primaryColor || company.primaryColor || '#4B0E7A',
       // Optional hero image
-      ...(program.heroImageUrl || company.heroImageUrl
-        ? {
-            heroImage: {
-              sourceUri: {
-                uri: program.heroImageUrl || company.heroImageUrl,
-              },
-            },
-          }
+    ...(program.heroImageUrl || company.heroImageUrl
+        ? (() => {
+            const rawHeroImageUrl = program.heroImageUrl || company.heroImageUrl;
+            return typeof rawHeroImageUrl === 'string' &&
+              !rawHeroImageUrl.includes('placeholder')
+              ? {
+                  heroImage: {
+                    sourceUri: {
+                      uri: rawHeroImageUrl,
+                    },
+                  },
+                }
+              : {};
+          })()
         : {}),
       // Text modules can be used for program description
       textModulesData: [

@@ -20,7 +20,7 @@ async function main() {
       name: 'BigDwich',
       slug: 'bigdwich',
       logoUrl:
-        'https://via.placeholder.com/400x400/4B0E7A/FFFFFF?text=BIGDWICH', // replace with real logo URL
+        null, // replace with real logo URL
       primaryColor: '#4B0E7A',
       secondaryColor: '#00D4C8',
       accentColor: '#E91E8C',
