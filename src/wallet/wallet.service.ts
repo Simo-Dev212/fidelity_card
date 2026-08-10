@@ -29,8 +29,9 @@ export class WalletService {
 
     const result = await this.provider.createPass(membership);
 
-    await this.prisma.walletPass.create({
-      data: {
+    await this.prisma.walletPass.upsert({
+   where: { membershipId: membership.id },
+      create: {
         membershipId: membership.id,
         companyId: membership.companyId,
         provider: this.provider.providerName as WalletProviderType,
@@ -38,11 +39,19 @@ export class WalletService {
         saveUrl: result.saveUrl,
         status: WalletPassStatus.ACTIVE,
         lastSyncAt: new Date(),
+        lastError: null,
+      },
+      update: {
+        externalId: result.externalId,
+        saveUrl: result.saveUrl,
+        status: WalletPassStatus.ACTIVE,
+        lastSyncAt: new Date(),
+        lastError: null,
       },
     });
 
     this.logger.log(
-      `Wallet pass created for membership ${membershipId} → ${result.externalId}`,
+      `Wallet pass upserted for membership ${membershipId} → ${result.externalId}`,
     );
 
     return result;

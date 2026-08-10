@@ -244,8 +244,8 @@ export class GoogleWalletProvider implements WalletProvider {
       });
       this.logger.log(`Created LoyaltyObject: ${objectId}`);
     } catch (err: any) {
-      // Object already exists on Google → treat as success
-      if (err?.response?.status === 409 || err?.code === 409) {
+      const status = err?.response?.status ?? err?.code;
+      if (status === 409) {
         this.logger.debug(`LoyaltyObject already exists: ${objectId}`);
       } else {
         throw err;
