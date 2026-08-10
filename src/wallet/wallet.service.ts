@@ -92,4 +92,45 @@ export class WalletService {
       throw err;
     }
   }
-}
+  /**
+   * Always return a freshly signed saveUrl JWT.
+   * Updates walletPass.saveUrl in DB so the latest link is stored.
+   * Safe to call for existing memberships (does not recreate the Google object).
+   */
+  async regenerateSaveUrlForMembership(membershipId: string): Promise<string> {
+    const membership = await this.prisma.membership.findUniqueOrThrow({
+      where: { id: membershipId },
+      include: {
+        program: true,
+        company: true,
+        user: true,
+        walletPass: true,
+      },
+    });
+
+    if (!membership.walletPass) {
+      const result = await this.createPassForMembership(membershipId);
+      return result.saveUrl;
+    }
+
+    // Local const → TypeScript narrows correctly (no more red underline on .id)
+    const walletPass = membership.walletPass;
+
+    const saveUrl = this.provider.getSaveUrl(membership);
+
+    await this.prisma.walletPass.update({
+      where: { id: walletPass.id },
+      data: {
+        saveUrl,
+        lastSyncAt: new Date(),
+      },
+    });
+
+    this.logger.log(
+      `Regenerated saveUrl JWT for membership ${membershipId}`,
+    );
+
+    return saveUrl;
+  }
+    }
+

@@ -101,7 +101,7 @@ export class GoogleWalletProvider implements WalletProvider {
     const logo =
       typeof rawLogoUrl === 'string' && !rawLogoUrl.includes('placeholder')
         ? rawLogoUrl
-        : 'https://developers.google.com/static/wallet/images/logo.png';
+        : "https://i.imgur.com/vmbpMZJ.png";
 
     return {
       id: classId,
@@ -234,15 +234,25 @@ export class GoogleWalletProvider implements WalletProvider {
     const auth = this.getAuthClient();
     const client = await auth.getClient();
     const payload = this.buildObjectPayload(membership);
+    const objectId = payload.id as string;
 
-    await client.request({
-      url: 'https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject',
-      method: 'POST',
-      data: payload,
-    });
+    try {
+      await client.request({
+        url: 'https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject',
+        method: 'POST',
+        data: payload,
+      });
+      this.logger.log(`Created LoyaltyObject: ${objectId}`);
+    } catch (err: any) {
+      // Object already exists on Google → treat as success
+      if (err?.response?.status === 409 || err?.code === 409) {
+        this.logger.debug(`LoyaltyObject already exists: ${objectId}`);
+      } else {
+        throw err;
+      }
+    }
 
-    this.logger.log(`Created LoyaltyObject: ${payload.id}`);
-    return payload.id;
+    return objectId;
   }
 
   /**
@@ -264,10 +274,11 @@ export class GoogleWalletProvider implements WalletProvider {
   }
 
   /**
-   * Generate the signed JWT "Save to Google Wallet" link
-   * https://developers.google.com/wallet/generic/web#jwt
+   * Generate a fresh signed JWT "Save to Google Wallet" link.
+   * Always call this when returning a saveUrl to the client (do not reuse a stored JWT).
+   * Spec: https://developers.google.com/wallet/retail/loyalty-cards/use-cases/jwt
    */
-  private generateSaveUrl(membership: FullMembership): string {
+  generateSaveUrl(membership: FullMembership): string {
     const classId = this.getClassId(membership.program);
     const objectId = this.getObjectId(membership);
 
@@ -276,11 +287,19 @@ export class GoogleWalletProvider implements WalletProvider {
       aud: 'google',
       typ: 'savetowallet',
       iat: Math.floor(Date.now() / 1000),
+      origins: [
+        'http://localhost:3000',
+        'https://localhost:3000',
+      ],
       payload: {
         loyaltyClasses: [{ id: classId }],
-        loyaltyObjects: [{ id: objectId }],
+        loyaltyObjects: [
+          {
+            id: objectId,
+            classId: classId, // OBLIGATOIRE quand l'objet existe déjà
+          },
+        ],
       },
-      origins: [], // optional: restrict origins
     };
 
     const token = jwt.sign(claims, this.privateKey, {
@@ -288,6 +307,11 @@ export class GoogleWalletProvider implements WalletProvider {
     });
 
     return `https://pay.google.com/gp/v/save/${token}`;
+  }
+
+  /** Interface alias — toujours un JWT fraîchement signé */
+  getSaveUrl(membership: FullMembership): string {
+    return this.generateSaveUrl(membership);
   }
 
   // ─────────────────────────────────────────────

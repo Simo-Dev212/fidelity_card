@@ -55,14 +55,6 @@ export class MembershipsService {
       include: { walletPass: true },
     });
     if (existing) {
-      // Return existing save URL if available
-      if (existing.walletPass?.saveUrl) {
-        return {
-          membership: existing,
-          saveUrl: existing.walletPass.saveUrl,
-          alreadyMember: true,
-        };
-      }
       // Re-create pass if missing
       const result = await this.walletService.createPassForMembership(existing.id);
       return {

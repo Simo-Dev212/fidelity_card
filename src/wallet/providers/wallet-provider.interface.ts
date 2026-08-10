@@ -63,7 +63,15 @@ export interface WalletProvider {
    * Optional: revoke / invalidate the pass (e.g. membership suspended).
    */
   revokePass?(membership: Membership): Promise<void>;
-
+  /**
+   * Always generate a FRESH "Save to Wallet" URL/JWT.
+   * Do not return a previously stored saveUrl — JWTs should be regenerated on each request.
+   */
+  getSaveUrl(membership: Membership & {
+    program: any;
+    company: any;
+    user: any;
+  }): string;
   /**
    * Provider name for logging / WalletPass.provider enum.
    */

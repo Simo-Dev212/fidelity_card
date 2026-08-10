@@ -20,11 +20,11 @@ async function main() {
       name: 'BigDwich',
       slug: 'bigdwich',
       logoUrl:
-        null, // replace with real logo URL
+        'https://i.imgur.com/vmbpMZJ.png', // replace with real logo URL
       primaryColor: '#4B0E7A',
       secondaryColor: '#00D4C8',
       accentColor: '#E91E8C',
-      heroImageUrl: null,
+      heroImageUrl: "https://i.imgur.com/vmbpMZJ.png",
       website: 'https://instagram.com/big.dwich',
       supportEmail: 'contact@bigdwich.fr',
       isActive: true,
