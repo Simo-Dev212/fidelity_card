@@ -13,6 +13,7 @@ import { WalletModule } from './wallet/wallet.module';
 import { JoinModule } from './join/join.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { AdminModule } from './admin/admin.module';
+import { StaffModule } from './staff/staff.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { AdminModule } from './admin/admin.module';
     JoinModule,
     WebhooksModule,
     AdminModule,
+    StaffModule,
   ],
   providers: [
     {

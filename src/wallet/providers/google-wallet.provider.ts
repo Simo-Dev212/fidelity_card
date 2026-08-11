@@ -75,8 +75,17 @@ export class GoogleWalletProvider implements WalletProvider {
   }
 
   private getObjectId(membership: Membership): string {
-    // walletId is already unique and never reused
-    return `${this.issuerId}.${membership.walletId}`;
+    // Use the membership ID so each pass has a stable, unique object id
+    // and we do not keep patching an old malformed Google object.
+    return `${this.issuerId}.${membership.id}`;
+  }
+
+  private isValidImageUrl(url?: string | null): boolean {
+    if (!url || !url.startsWith('https://')) return false;
+    if (url.includes('placeholder.com') || url.includes('via.placeholder'))
+      return false;
+    if (url.includes('imgur.com/a/')) return false;
+    return true;
   }
 
   /**
@@ -85,60 +94,59 @@ export class GoogleWalletProvider implements WalletProvider {
   private buildClassPayload(membership: FullMembership) {
     const { program, company } = membership;
     const classId = this.getClassId(program);
+    const logoUrl = program.logoUrl || company.logoUrl;
+    const heroUrl = program.heroImageUrl || company.heroImageUrl;
+    const bg = program.primaryColor || company.primaryColor || '#4B0E7A';
 
-    const hexToRgb = (hex?: string | null) => {
-      if (!hex) return { red: 0.29, green: 0.05, blue: 0.48 }; // BigDwich purple default
-      const h = hex.replace('#', '');
-      return {
-        red: parseInt(h.substring(0, 2), 16) / 255,
-        green: parseInt(h.substring(2, 4), 16) / 255,
-        blue: parseInt(h.substring(4, 6), 16) / 255,
-      };
-    };
-
-       const primary = hexToRgb(program.primaryColor || company.primaryColor);
-    const rawLogoUrl = program.logoUrl || company.logoUrl;
-    const logo =
-      typeof rawLogoUrl === 'string' && !rawLogoUrl.includes('placeholder')
-        ? rawLogoUrl
-        : "https://i.imgur.com/vmbpMZJ.png";
-
-    return {
+    const payload: Record<string, unknown> = {
       id: classId,
       issuerName: company.name,
-      reviewStatus: 'UNDER_REVIEW', // change to APPROVED after Google review in prod
+      reviewStatus: 'UNDER_REVIEW',
       programName: program.name,
-      programLogo: {
-        sourceUri: { uri: logo },
-        contentDescription: { defaultValue: { language: 'fr', value: company.name } },
-      },
-      hexBackgroundColor: program.primaryColor || company.primaryColor || '#4B0E7A',
-      // Optional hero image
-    ...(program.heroImageUrl || company.heroImageUrl
-        ? (() => {
-            const rawHeroImageUrl = program.heroImageUrl || company.heroImageUrl;
-            return typeof rawHeroImageUrl === 'string' &&
-              !rawHeroImageUrl.includes('placeholder')
-              ? {
-                  heroImage: {
-                    sourceUri: {
-                      uri: rawHeroImageUrl,
-                    },
-                  },
-                }
-              : {};
-          })()
-        : {}),
-      // Text modules can be used for program description
+      hexBackgroundColor: bg,
+      accountNameLabel: 'Membre',
+      accountIdLabel: 'ID',
+      programLogo: this.isValidImageUrl(logoUrl)
+        ? {
+            sourceUri: { uri: logoUrl },
+            contentDescription: {
+              defaultValue: { language: 'fr', value: company.name },
+            },
+          }
+        : {
+            sourceUri: {
+              uri: 'https://i.imgur.com/irnBhzi.jpeg',
+            },
+            contentDescription: {
+              defaultValue: { language: 'fr', value: company.name },
+            },
+          },
       textModulesData: [
         {
           header: 'Programme',
-          body: program.description || `Fidélité ${company.name}`,
+          body:
+            program.description ||
+            `Fidélité ${company.name} — gagne du lourd avec la carte BigDwich`,
           id: 'program_info',
         },
       ],
     };
+
+    if (this.isValidImageUrl(heroUrl)) {
+      payload.heroImage = {
+        sourceUri: { uri: heroUrl },
+        contentDescription: {
+          defaultValue: {
+            language: 'fr',
+            value: `${company.name} — Gagne du lourd`,
+          },
+        },
+      };
+    }
+
+    return payload;
   }
+
 
   /**
    * Build the LoyaltyObject payload (per user membership)
@@ -147,41 +155,63 @@ export class GoogleWalletProvider implements WalletProvider {
     const { program, company, user } = membership;
     const objectId = this.getObjectId(membership);
     const classId = this.getClassId(program);
-
+    const settings = (program.settings as Record<string, unknown>) || {};
     const isStamps = program.type === 'STAMPS';
-    const settings = (program.settings as any) || {};
+    const stampsRequired =
+      typeof settings.stampsRequired === 'number'
+        ? settings.stampsRequired
+        : 5;
+    const safeBalance = Number(membership.balance);
+    const pointsBalance = Number.isFinite(safeBalance) ? safeBalance : 0;
 
-    // Loyalty points or stamp count
-    const balanceLabel = isStamps ? 'Tampons' : 'Points';
-    const balanceValue = String(membership.balance);
+    // Google: balance is REQUIRED. Use only ONE of int | string | double | money.
+    // - POINTS → int (official samples)
+    // - STAMPS → string "1/5" for Slim-Chickens style display
+    const loyaltyPoints = isStamps
+      ? {
+          label: 'STAMPS',
+          balance: {
+            string: `${pointsBalance}/${stampsRequired}`,
+          },
+        }
+      : {
+          label: 'POINTS',
+          balance: {
+            int: Math.max(0, Math.floor(pointsBalance)),
+          },
+        };
+
+    const rewardBody =
+      typeof settings.rewardDescription === 'string'
+        ? settings.rewardDescription
+        : isStamps
+          ? `${stampsRequired} tampons = récompense`
+          : 'Échange tes points contre des récompenses';
 
     return {
       id: objectId,
       classId,
       state: 'ACTIVE',
       accountId: membership.walletId,
-      accountName: user.name || user.email,
-      loyaltyPoints: {
-        label: balanceLabel,
-        balance: {
-          string: balanceValue,
-        },
-      },
-      // Optional barcode / QR for in-store scanning
+      accountName: user.name || user.email || 'Membre',
+      loyaltyPoints,
       barcode: {
         type: 'QR_CODE',
-        value: membership.walletId,
+        value: `loyalty:${membership.walletId}`,
         alternateText: membership.walletId,
       },
-      // Text modules for extra info
       textModulesData: [
+        {
+          header: 'Récompense',
+          body: rewardBody,
+          id: 'reward',
+        },
         {
           header: 'Membre depuis',
           body: new Date(membership.joinedAt).toLocaleDateString('fr-FR'),
           id: 'joined',
         },
       ],
-      // Link back to the app / website if available
       ...(company.website
         ? {
             linksModuleData: {
@@ -206,10 +236,12 @@ export class GoogleWalletProvider implements WalletProvider {
     const client = await auth.getClient();
     const classId = this.getClassId(membership.program);
     const url = `https://walletobjects.googleapis.com/walletobjects/v1/loyaltyClass/${classId}`;
+    const payload = this.buildClassPayload(membership);
 
     try {
       // Try GET first
       await client.request({ url, method: 'GET' });
+      await client.request({ url, method: 'PATCH', data: payload });
       this.logger.debug(`LoyaltyClass already exists: ${classId}`);
     } catch (err: any) {
       if (err?.response?.status === 404) {
@@ -247,6 +279,11 @@ export class GoogleWalletProvider implements WalletProvider {
       const status = err?.response?.status ?? err?.code;
       if (status === 409) {
         this.logger.debug(`LoyaltyObject already exists: ${objectId}`);
+        await client.request({
+          url: `https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${objectId}`,
+          method: 'PATCH',
+          data: payload,
+        });
       } else {
         throw err;
       }
@@ -327,7 +364,9 @@ export class GoogleWalletProvider implements WalletProvider {
   }
 
   async updatePass(membership: FullMembership): Promise<UpdatePassResult> {
+    await this.ensureClass(membership);
     await this.patchObject(membership);
+    
     return {
       success: true,
       externalId: this.getObjectId(membership),
