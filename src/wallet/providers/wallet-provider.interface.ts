@@ -84,3 +84,5 @@ export interface WalletProvider {
  * Later we can make it dynamic (per company preference) or multi-provider.
  */
 export const WALLET_PROVIDER = Symbol('WALLET_PROVIDER');
+
+export const APPLE_WALLET_PROVIDER = Symbol('APPLE_WALLET_PROVIDER');
