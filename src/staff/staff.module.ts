@@ -3,9 +3,10 @@ import { StaffController } from './staff.controller';
 import { StaffService } from './staff.service';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { MembershipsModule } from '../memberships/memberships.module';
 
 @Module({
-  imports: [PrismaModule, LoyaltyModule],
+  imports: [PrismaModule, LoyaltyModule, MembershipsModule],
   controllers: [StaffController],
   providers: [StaffService],
   exports: [StaffService],
