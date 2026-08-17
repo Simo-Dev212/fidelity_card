@@ -17,7 +17,7 @@ import {
     AppleWalletProvider,
     {
       provide: WALLET_PROVIDER,
-      useExisting: GoogleWalletProvider,
+      useExisting: AppleWalletProvider,
     },
     {
       provide: APPLE_WALLET_PROVIDER,

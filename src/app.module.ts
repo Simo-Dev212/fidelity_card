@@ -14,6 +14,8 @@ import { JoinModule } from './join/join.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { AdminModule } from './admin/admin.module';
 import { StaffModule } from './staff/staff.module';
+import { AppController } from './app.controller';
+import { PwaController } from './pwa.controller';
 
 @Module({
   imports: [
@@ -23,8 +25,8 @@ import { StaffModule } from './staff/staff.module';
     }),
     ThrottlerModule.forRoot([
       {
-        ttl: 60000, // 1 minute
-        limit: 100, // 100 requests per minute global
+        ttl: 60000,
+        limit: 100,
       },
     ]),
     PrismaModule,
@@ -40,6 +42,7 @@ import { StaffModule } from './staff/staff.module';
     AdminModule,
     StaffModule,
   ],
+  controllers: [AppController, PwaController],
   providers: [
     {
       provide: APP_GUARD,

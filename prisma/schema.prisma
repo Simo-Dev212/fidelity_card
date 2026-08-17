@@ -27,6 +27,7 @@ model Company {
   updatedAt      DateTime     @default(now()) @updatedAt
   memberships    Membership[]
   programs       Program[]
+  staffAssignments StaffAssignment[]
 
   @@index([slug])
   @@map("companies")
@@ -72,9 +73,12 @@ model User {
   passwordHash  String?
   /// Locale preference
   locale        String       @default("en")
+  /// Role: CLIENT (default), STAFF, or ADMIN
+  role          UserRole     @default(CLIENT)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @default(now()) @updatedAt
   memberships   Membership[]
+  staffAssignments StaffAssignment[]
 
   @@index([email])
   @@map("users")
@@ -153,6 +157,26 @@ model WalletPass {
   @@map("wallet_passes")
 }
 
+model StaffAssignment {
+  id               String      @id @default(cuid())
+  userId           String
+  companyId        String
+  status           StaffStatus @default(PENDING)
+  canAdjustBalance Boolean     @default(true)
+  canRedeem        Boolean     @default(true)
+  assignedById     String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @default(now()) @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@index([userId])
+  @@index([companyId])
+  @@map("staff_assignments")
+}
+
 enum ProgramType {
   POINTS
   STAMPS
@@ -187,4 +211,16 @@ enum WalletPassStatus {
   UPDATED
   FAILED
   REVOKED
+}
+
+enum UserRole {
+  CLIENT
+  STAFF
+  ADMIN
+}
+
+enum StaffStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
 }

@@ -29,14 +29,15 @@ export class AuthService {
     return result;
   }
 
-  async login(user: { id: string; email: string; name?: string | null }) {
-    const payload = { sub: user.id, email: user.email };
+  async login(user: { id: string; email: string; name?: string | null; role?: string }) {
+    const payload = { sub: user.id, email: user.email, role: user.role || 'CLIENT' };
     return {
       accessToken: this.jwtService.sign(payload),
       user: {
         id: user.id,
         email: user.email,
         name: user.name,
+        role: user.role || 'CLIENT',
       },
     };
   }
@@ -46,6 +47,7 @@ export class AuthService {
     password: string;
     name?: string;
     locale?: string;
+    role?: 'CLIENT' | 'STAFF' | 'ADMIN';
   }) {
     const existing = await this.usersService.findByEmail(data.email);
     if (existing) {
@@ -59,6 +61,7 @@ export class AuthService {
         passwordHash,
         name: data.name,
         locale: data.locale || 'fr',
+        role: data.role || 'CLIENT',
       },
     });
 
