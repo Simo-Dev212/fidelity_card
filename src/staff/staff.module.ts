@@ -5,11 +5,12 @@ import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { MembershipsModule } from '../memberships/memberships.module';
 import { CompaniesModule } from '../companies/companies.module';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
 @Module({
   imports: [PrismaModule, LoyaltyModule, MembershipsModule, CompaniesModule],
   controllers: [StaffController],
-  providers: [StaffService],
+  providers: [StaffService, RolesGuard],
   exports: [StaffService],
 })
 export class StaffModule {}

@@ -11,7 +11,7 @@ import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { IsEmail, IsString, MinLength, IsOptional, IsIn } from 'class-validator';
+import { IsEmail, IsString, MinLength, IsOptional } from 'class-validator';
 
 class RegisterDto {
   @IsEmail()
@@ -28,10 +28,6 @@ class RegisterDto {
   @IsOptional()
   @IsString()
   locale?: string;
-
-  @IsOptional()
-  @IsIn(['CLIENT', 'STAFF', 'ADMIN'])
-  role?: 'CLIENT' | 'STAFF' | 'ADMIN';
 }
 
 class LoginDto {
@@ -48,7 +44,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  @ApiOperation({ summary: 'Register with email + password' })
+  @ApiOperation({ summary: 'Register with email + password (always CLIENT)' })
   async register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
