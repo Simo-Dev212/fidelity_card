@@ -7,6 +7,8 @@ import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
+import { join } from 'path';
+import fastifyStatic from '@fastify/static';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -16,7 +18,6 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
 
-  // Global validation
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -26,13 +27,17 @@ async function bootstrap() {
     }),
   );
 
-  // CORS (adjust origins in production)
   app.enableCors({
     origin: true,
     credentials: true,
   });
 
-  // Swagger
+  await app.register(fastifyStatic as any, {
+    root: join(process.cwd(), 'public'),
+    prefix: '/public/',
+    decorateReply: false,
+  });
+
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Loyalty Wallet API')
     .setDescription(
@@ -56,6 +61,7 @@ async function bootstrap() {
 
   console.log(`🚀 Loyalty Wallet running on http://localhost:${port}`);
   console.log(`📚 Swagger docs: http://localhost:${port}/api/docs`);
+  console.log(`📱 PWA: http://localhost:${port}/app`);
 }
 
 bootstrap();
