@@ -29,7 +29,12 @@ export class AuthService {
     return result;
   }
 
-  async login(user: { id: string; email: string; name?: string | null; role?: string }) {
+  async login(user: {
+    id: string;
+    email: string;
+    name?: string | null;
+    role?: string;
+  }) {
     const payload = { sub: user.id, email: user.email, role: user.role || 'CLIENT' };
     return {
       accessToken: this.jwtService.sign(payload),
@@ -61,16 +66,14 @@ export class AuthService {
         passwordHash,
         name: data.name,
         locale: data.locale || 'fr',
-        role: data.role || 'CLIENT',
+        // Public register is always CLIENT. STAFF/ADMIN are assigned, never self-chosen.
+        role: 'CLIENT',
       },
     });
 
     return this.login(user);
   }
 
-  /**
-   * Used by Google OAuth strategy (and future Apple)
-   */
   async validateOAuthUser(profile: {
     email: string;
     name?: string;
@@ -89,10 +92,10 @@ export class AuthService {
           googleId: profile.googleId,
           appleId: profile.appleId,
           emailVerified: new Date(),
+          role: 'CLIENT',
         },
       });
     } else {
-      // Link provider if not already
       const update: any = {};
       if (profile.googleId && !user.googleId) update.googleId = profile.googleId;
       if (profile.appleId && !user.appleId) update.appleId = profile.appleId;
