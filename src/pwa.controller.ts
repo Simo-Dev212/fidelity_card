@@ -36,6 +36,10 @@ export class PwaController {
   }
 
   private shell(title: string, route: string): string {
+    const qrLib =
+      route === 'staff'
+        ? '<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>'
+        : '';
     return `<!doctype html>
 <html lang="en">
 <head>
@@ -48,6 +52,7 @@ export class PwaController {
   <link rel="apple-touch-icon" href="/icon-192.png" />
   <title>${title}</title>
   <style>${CSS}</style>
+  ${qrLib}
 </head>
 <body>
   <div id="app"></div>
@@ -168,6 +173,19 @@ input{font-family:inherit;font-size:inherit}
 .actions .btn{flex:1;min-width:100px}
 
 .section-title{font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin:20px 20px 8px}
+.staff-co{display:flex;align-items:center;gap:12px;padding:16px;background:var(--surface);border-radius:var(--radius-lg);box-shadow:var(--shadow);margin-bottom:16px}
+.staff-co .dot{width:10px;height:10px;border-radius:50%;background:var(--green);flex-shrink:0}
+.staff-co .name{font-size:17px;font-weight:600}
+.staff-co .sub{font-size:13px;color:var(--text2)}
+.scan-box{background:#000;border-radius:var(--radius-lg);overflow:hidden;margin-bottom:12px;min-height:280px;position:relative}
+.scan-box video,.scan-box canvas,.scan-box img{max-width:100%}
+.scan-hint{position:absolute;bottom:12px;left:0;right:0;text-align:center;color:rgba(255,255,255,.85);font-size:13px;pointer-events:none}
+.wallet-actions{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+.btn-wallet{padding:14px 16px;border-radius:var(--radius);font-size:16px;font-weight:600;text-align:center;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn-google{background:#1a1a1a;color:#fff}
+.btn-apple{background:var(--text);color:#fff}
+.wallet-pass .logo-sm{width:40px;height:40px;border-radius:8px;object-fit:cover;margin-bottom:8px}
+.join-link{font-family:monospace;font-size:13px;background:rgba(118,118,128,.08);padding:10px 12px;border-radius:8px;word-break:break-all;margin:8px 0}
 `;
 
 const JS = `
@@ -188,6 +206,34 @@ function logout(){localStorage.removeItem('token');localStorage.removeItem('user
 function getRole(){try{return JSON.parse(localStorage.getItem('user')).role}catch(e){return null}}
 function getToken(){return localStorage.getItem('token')}
 
+function openGoogleWallet(url){
+  if(!url){alert('Google Wallet non disponible');return}
+  window.open(url,'_blank');
+}
+function openAppleWallet(membershipId){
+  var t=getToken();
+  if(!t){go('auth');return}
+  var isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
+  var url='/wallet/apple/'+membershipId+'/download?access_token='+encodeURIComponent(t);
+  if(isIOS){window.location.href=url}else{
+    fetch(url,{headers:{Authorization:'Bearer '+t}}).then(function(r){
+      if(!r.ok)throw new Error('Download failed');
+      return r.blob();
+    }).then(function(b){
+      var u=URL.createObjectURL(b);
+      var a=document.createElement('a');a.href=u;a.download='card.pkpass';a.click();
+      URL.revokeObjectURL(u);
+    }).catch(function(e){alert(e.message)});
+  }
+}
+function qrImgData(walletId){
+  return 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data='+encodeURIComponent('loyalty:'+walletId);
+}
+function passGradient(primary,fallback){
+  var c=primary||fallback||'#4B0E7A';
+  return 'background:linear-gradient(135deg,'+c+','+c+'cc)';
+}
+
 var IC={
   wallet:'<svg viewBox="0 0 24 24"><path d="M21 8V5a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-3M3 10h18M16 14h3v-4h-3a2 2 0 0 0 0 4z"/></svg>',
   scan:'<svg viewBox="0 0 24 24"><path d="M4 7V4h3M20 7V4h-3M4 17v3h3M20 17v3h-3M4 12h16"/></svg>',
@@ -199,7 +245,12 @@ var IC={
 
 function tabbar(active){
   var role=getRole();
-  var tabs=[{r:'client',i:IC.wallet,l:'Wallet'},{r:'staff',i:IC.scan,l:'Scan'}];
+  var tabs=[];
+  if(role==='STAFF'||role==='ADMIN'){
+    tabs.push({r:'staff',i:IC.scan,l:'Scan'});
+  }else{
+    tabs.push({r:'client',i:IC.wallet,l:'Wallet'});
+  }
   if(role==='ADMIN')tabs.push({r:'admin',i:IC.grid,l:'Admin'});
   tabs.push({r:'settings',i:IC.settings,l:'Settings'});
   var bar=el('div','tabbar');
@@ -236,6 +287,8 @@ function showAuth(){
     '<button class="btn" id="submitBtn">Sign In</button>';
   view.appendChild(form);
 
+  app.appendChild(view);
+
   var mode='login';
   loginBtn.onclick=function(){mode='login';loginBtn.className='active';regBtn.className='';document.getElementById('nameField').classList.add('hidden');document.getElementById('submitBtn').textContent='Sign In'};
   regBtn.onclick=function(){mode='register';regBtn.className='active';loginBtn.className='';document.getElementById('nameField').classList.remove('hidden');document.getElementById('submitBtn').textContent='Create Account'};
@@ -256,8 +309,7 @@ function showAuth(){
       if(role==='ADMIN')go('admin');else if(role==='STAFF')go('staff');else go('client');
     }catch(e){errBox.textContent=e.message;errBox.classList.remove('hidden');btn.disabled=false;btn.textContent=old}
   };
-  app.appendChild(view);
-
+  
   var token=getToken();
   if(token){
     api('/auth/me',{method:'POST'}).then(function(me){
@@ -268,18 +320,21 @@ function showAuth(){
 }
 
 function showClient(){
+  var role=getRole();
+  if(role==='STAFF'){go('staff');return}
+  if(role==='ADMIN'){go('admin');return}
   var app=document.getElementById('app');app.innerHTML='';
   if(!getToken()){go('auth');return}
   app.appendChild(el('div','nav','<span class="title">My Wallet</span><button class="btn" onclick="logout()">Sign Out</button>'));
   var view=el('div','view');
-  view.appendChild(el('div','hero','<h1>Your cards.</h1><p>All your loyalty memberships in one place.</p>'));
+  view.appendChild(el('div','hero','<h1>Your cards.</h1><p>Add them to Apple or Google Wallet.</p>'));
   var loading=el('div','center muted','<div class="spin"></div><p style="margin-top:8px">Loading...</p>');
   view.appendChild(loading);
   app.appendChild(view);app.appendChild(tabbar('client'));
   api('/memberships/mine').then(function(cards){
     loading.remove();
     if(!cards||cards.length===0){
-      view.appendChild(el('div','empty',IC.empty+'<h3>No cards yet</h3><p>Join a loyalty program to get started.</p>'));
+      view.appendChild(el('div','empty',IC.empty+'<h3>No cards yet</h3><p>Scan the QR at the restaurant to join their loyalty program.</p>'));
       return;
     }
     cards.forEach(function(c){
@@ -287,14 +342,27 @@ function showClient(){
       var isStamps=p.type==='STAMPS';
       var req=(p.settings&&p.settings.stampsRequired)||5;
       var bal=isStamps?c.balance+'/'+req:c.balance;
-      var cls=isStamps?'green':'light';
-      var pass=el('div','wallet-pass '+cls);
-      pass.innerHTML='<div class="label">'+(isStamps?'Stamps':'Points')+'</div>'+
+      var primary=p.primaryColor||co.primaryColor||'#0071e3';
+      var pass=el('div','wallet-pass');
+      pass.setAttribute('style',passGradient(primary,'#0071e3'));
+      var logoHtml=co.logoUrl?'<img class="logo-sm" src="'+co.logoUrl+'" alt=""/>' :'';
+      pass.innerHTML=logoHtml+
+        '<div class="label">'+(isStamps?'Stamps':'Points')+'</div>'+
         '<div class="balance">'+bal+'</div>'+
-        '<div class="brand">'+(co.name||'')+' - '+(p.name||'')+'</div>'+
+        '<div class="brand">'+(co.name||'')+' · '+(p.name||'')+'</div>'+
         '<div class="id">'+c.walletId+'</div>'+
-        '<div class="qr"><img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=loyalty:'+c.walletId+'" alt="QR" width="180" height="180"/></div>'+
-        '<div class="actions"><a class="btn btn-secondary btn-sm" href="/wallet/apple/'+c.id+'/download">Add to Apple Wallet</a></div>';
+        '<div class="qr"><img src="'+qrImgData(c.walletId)+'" alt="QR" width="180" height="180"/></div>'+
+        '<div class="wallet-actions">'+
+        (c.googleUrl?'<button class="btn-wallet btn-google" data-g="'+c.id+'">Add to Google Wallet</button>':'')+
+        '<button class="btn-wallet btn-apple" data-a="'+c.id+'">Add to Apple Wallet</button>'+
+        '</div>';
+      pass.querySelector('[data-g]')&&pass.querySelector('[data-g]').addEventListener('click',function(){
+        var btn=this;btn.disabled=true;
+        api('/memberships/'+c.id+'/google-save-url',{method:'POST'}).then(function(d){
+          openGoogleWallet(d.saveUrl||c.googleUrl);btn.disabled=false;
+        }).catch(function(e){alert(e.message);btn.disabled=false});
+      });
+      pass.querySelector('[data-a]').addEventListener('click',function(){openAppleWallet(c.id)});
       view.appendChild(pass);
     });
   }).catch(function(e){

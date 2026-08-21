@@ -7,12 +7,15 @@ import {
   Post,
   HttpCode,
   HttpStatus,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PrismaService } from '../prisma/prisma.service';
 import { MembershipsService } from './memberships.service';
 import { WalletService } from '../wallet/wallet.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard, RequireRoles } from '../auth/guards/roles.guard';
+import { StaffStatus } from '@prisma/client';
 
 @ApiTags('memberships')
 @Controller('memberships')
@@ -51,6 +54,8 @@ export class MembershipsController {
             logoUrl: true,
             primaryColor: true,
             secondaryColor: true,
+            accentColor: true,
+            heroImageUrl: true,
           },
         },
         walletPass: {
@@ -59,14 +64,27 @@ export class MembershipsController {
       },
       orderBy: { joinedAt: 'desc' },
     });
-    return memberships.map((m) => ({
-      ...m,
-      appleUrl: `/wallet/apple/${m.id}/download`,
-      googleUrl: m.walletPass?.saveUrl || null,
-    }));
+
+    const enriched = await Promise.all(
+      memberships.map(async (m) => {
+        let googleUrl: string | null = null;
+        try {
+          googleUrl =
+            await this.walletService.regenerateSaveUrlForMembership(m.id);
+        } catch {
+          googleUrl = m.walletPass?.saveUrl || null;
+        }
+        return {
+          ...m,
+          appleUrl: `/wallet/apple/${m.id}/download`,
+          googleUrl,
+        };
+      }),
+    );
+
+    return enriched;
   }
 
-  /** Re-issue a fresh Google Wallet save URL for an existing membership (owner only). */
   @Post(':id/google-save-url')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Regenerate Google Wallet save URL for own membership' })
@@ -82,14 +100,38 @@ export class MembershipsController {
   }
 
   @Get('wallet/:walletId')
-  @ApiOperation({ summary: 'Find membership by walletId' })
-  findByWalletId(@Param('walletId') walletId: string) {
-    return this.membershipsService.findByWalletId(walletId);
+  @UseGuards(RolesGuard)
+  @RequireRoles('STAFF', 'ADMIN')
+  @ApiOperation({ summary: 'Find membership by walletId (staff only)' })
+  async findByWalletId(
+    @Param('walletId') walletId: string,
+    @Req() req: { user: { id: string; role?: string } },
+  ) {
+    const membership = await this.membershipsService.findByWalletId(walletId);
+    if (!membership) return null;
+
+    if (req.user.role === 'ADMIN') return membership;
+
+    const assignment = await this.prisma.staffAssignment.findFirst({
+      where: {
+        userId: req.user.id,
+        companyId: membership.companyId,
+        status: StaffStatus.ACTIVE,
+      },
+    });
+    if (!assignment) {
+      throw new ForbiddenException('Access denied');
+    }
+    return membership;
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Find membership by id' })
-  findOne(@Param('id') id: string) {
-    return this.membershipsService.findById(id);
+  @ApiOperation({ summary: 'Find membership by id (owner only)' })
+  async findOne(@Param('id') id: string, @Req() req: { user: { id: string } }) {
+    const membership = await this.membershipsService.findById(id);
+    if (!membership || membership.userId !== req.user.id) {
+      throw new ForbiddenException('Access denied');
+    }
+    return membership;
   }
 }

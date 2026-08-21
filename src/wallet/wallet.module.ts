@@ -4,13 +4,14 @@ import { WalletController } from './wallet.controller';
 import { GoogleWalletProvider } from './providers/google-wallet.provider';
 import { AppleWalletProvider } from './providers/apple-wallet.provider';
 import { PrismaModule } from '../prisma/prisma.module';
+import { AuthModule } from '../auth/auth.module';
 import {
   WALLET_PROVIDER,
   APPLE_WALLET_PROVIDER,
 } from './providers/wallet-provider.interface';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, AuthModule],
   providers: [
     WalletService,
     GoogleWalletProvider,

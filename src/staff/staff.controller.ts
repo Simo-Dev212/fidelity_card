@@ -62,6 +62,14 @@ export class StaffController {
     if (user.role !== 'STAFF' && user.role !== 'ADMIN') {
       throw new ForbiddenException('Compte caisse requis');
     }
+    if (user.role === 'ADMIN') {
+      const first = await this.prisma.company.findFirst({
+        where: { isActive: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (first) return first.id;
+      throw new ForbiddenException('Aucune entreprise configurée');
+    }
     const assignment = await this.prisma.staffAssignment.findFirst({
       where: { userId: user.id, status: StaffStatus.ACTIVE },
       include: { company: { select: { id: true, slug: true, name: true } } },

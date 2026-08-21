@@ -3,35 +3,69 @@ import {
   Get,
   Param,
   Res,
-  Logger,
   NotFoundException,
+  ForbiddenException,
+  UseGuards,
+  Req,
   Inject,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PrismaService } from '../prisma/prisma.service';
 import { APPLE_WALLET_PROVIDER } from './providers/wallet-provider.interface';
 import type { WalletProvider } from './providers/wallet-provider.interface';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { StaffStatus } from '@prisma/client';
+
+type Authed = { id: string; email: string; role?: string };
 
 @ApiTags('wallet')
 @Controller('wallet')
 export class WalletController {
-  private readonly logger = new Logger(WalletController.name);
-
   constructor(
     private readonly prisma: PrismaService,
     @Inject(APPLE_WALLET_PROVIDER) private readonly appleProvider: WalletProvider,
   ) {}
 
-  /**
-   * Download a signed (or dev-unsigned) Apple Wallet .pkpass for a membership.
-   * GET /wallet/apple/:membershipId/download
-   */
+  private async assertCanAccessMembership(
+    membershipId: string,
+    user: Authed,
+  ): Promise<void> {
+    const membership = await this.prisma.membership.findUnique({
+      where: { id: membershipId },
+      select: { userId: true, companyId: true },
+    });
+    if (!membership) {
+      throw new NotFoundException('Membership not found');
+    }
+    if (membership.userId === user.id) return;
+
+    if (user.role === 'ADMIN') return;
+
+    if (user.role === 'STAFF') {
+      const assignment = await this.prisma.staffAssignment.findFirst({
+        where: {
+          userId: user.id,
+          companyId: membership.companyId,
+          status: StaffStatus.ACTIVE,
+        },
+      });
+      if (assignment) return;
+    }
+
+    throw new ForbiddenException('Access denied');
+  }
+
   @Get('apple/:membershipId/download')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Download Apple Wallet .pkpass for a membership' })
   async downloadApplePass(
     @Param('membershipId') membershipId: string,
+    @Req() req: { user: Authed },
     @Res() res: any,
   ) {
+    await this.assertCanAccessMembership(membershipId, req.user);
+
     const membership = await this.prisma.membership.findUnique({
       where: { id: membershipId },
       include: { program: true, company: true, user: true },
@@ -40,8 +74,10 @@ export class WalletController {
       throw new NotFoundException('Membership not found');
     }
 
-    const provider = this.appleProvider as any;
-    const buffer: Buffer = await provider.generatePkpassBuffer(membership);
+    const provider = this.appleProvider as {
+      generatePkpassBuffer: (m: typeof membership) => Promise<Buffer>;
+    };
+    const buffer = await provider.generatePkpassBuffer(membership);
 
     res.header('Content-Type', 'application/vnd.apple.pkpass');
     res.header(
