@@ -16,22 +16,6 @@ type FullMembership = Membership & {
   user: User;
 };
 
-/**
- * Apple Wallet (PassKit) Loyalty Provider
- * -----------------------------------------
- * Generates real signed .pkpass files using passkit-generator.
- * The pass is served from GET /wallet/apple/:membershipId/download.
- *
- * Requires (set in .env for signed passes on real devices):
- * - APPLE_PASS_TYPE_IDENTIFIER   e.g. pass.com.bigdwich.loyalty
- * - APPLE_TEAM_IDENTIFIER        e.g. ABC1234567
- * - APPLE_SIGNER_CERT_PEM        PEM cert (or APPLE_SIGNER_CERT_PATH)
- * - APPLE_SIGNER_KEY_PEM         PEM key  (or APPLE_SIGNER_KEY_PATH)
- * - APPLE_SIGNER_KEY_PASSPHRASE  optional
- * - APPLE_WWDR_CERT_PEM          WWDR intermediate cert (or APPLE_WWDR_CERT_PATH)
- *
- * When certificates are missing, passes are constructed unsigned (dev only).
- */
 @Injectable()
 export class AppleWalletProvider implements WalletProvider {
   readonly providerName = 'APPLE' as const;
@@ -39,7 +23,8 @@ export class AppleWalletProvider implements WalletProvider {
   private readonly passTypeIdentifier: string;
   private readonly teamIdentifier: string;
   private readonly modelDir: string;
-  private certificates: {
+  /** Public so WalletController can report status */
+  certificates: {
     signerCert: string;
     signerKey: string;
     wwdr: string;
@@ -79,9 +64,7 @@ export class AppleWalletProvider implements WalletProvider {
     const wwdr =
       this.config.get<string>('APPLE_WWDR_CERT_PEM') ||
       this.tryReadFile(this.config.get<string>('APPLE_WWDR_CERT_PATH'));
-    const passphrase = this.config.get<string>(
-      'APPLE_SIGNER_KEY_PASSPHRASE',
-    );
+    const passphrase = this.config.get<string>('APPLE_SIGNER_KEY_PASSPHRASE');
 
     if (signerCert && signerKey && wwdr) {
       this.certificates = {
@@ -90,11 +73,12 @@ export class AppleWalletProvider implements WalletProvider {
         wwdr,
         signerKeyPassphrase: passphrase,
       };
-      this.logger.log('Apple Wallet certificates loaded');
+      this.logger.log('Apple Wallet certificates loaded — real device install OK');
     } else {
       this.logger.warn(
-        'Apple Wallet certs missing — passes will be UNSIGNED (dev only). ' +
-          'Set APPLE_SIGNER_CERT_PEM / APPLE_SIGNER_KEY_PEM / APPLE_WWDR_CERT_PEM to sign.',
+        'Apple Wallet certs missing — .pkpass will NOT install on real iPhones. ' +
+          'Set APPLE_SIGNER_CERT_PEM / APPLE_SIGNER_KEY_PEM / APPLE_WWDR_CERT_PEM. ' +
+          'Clients can still use the on-screen QR for staff scan.',
       );
     }
   }
@@ -162,9 +146,7 @@ export class AppleWalletProvider implements WalletProvider {
         : isStamps
           ? `${stampsRequired} tampons = récompense`
           : 'Échange tes points contre des récompenses';
-    const joinedDate = new Date(membership.joinedAt).toLocaleDateString(
-      'fr-FR',
-    );
+    const joinedDate = new Date(membership.joinedAt).toLocaleDateString('fr-FR');
     return {
       primaryFields: [
         { key: 'balance', label: balanceLabel, value: balanceValue },
@@ -195,6 +177,12 @@ export class AppleWalletProvider implements WalletProvider {
   }
 
   async buildPass(membership: FullMembership): Promise<PKPass> {
+    if (!this.certificates) {
+      throw new Error(
+        'Apple Developer certificates not configured. Cannot sign .pkpass for real iPhone install.',
+      );
+    }
+
     const { program, company } = membership;
     const bg = this.hexToRgb(
       program.primaryColor || company.primaryColor || '#4B0E7A',
@@ -203,17 +191,9 @@ export class AppleWalletProvider implements WalletProvider {
       program.secondaryColor || company.secondaryColor || '#00D4C8',
     );
 
-    const certSource = this.certificates
-      ? this.certificates
-      : {
-          signerCert: 'dev-unsigned',
-          signerKey: 'dev-unsigned',
-          wwdr: 'dev-unsigned',
-        };
-
     const pass = await PKPass.from({
       model: this.modelDir,
-      certificates: certSource as any,
+      certificates: this.certificates as any,
     });
 
     pass.props.passTypeIdentifier = this.passTypeIdentifier;
@@ -265,7 +245,6 @@ export class AppleWalletProvider implements WalletProvider {
   }
 
   async createPass(membership: FullMembership): Promise<CreatePassResult> {
-    await this.buildPass(membership);
     return {
       saveUrl: this.downloadUrl(membership.id),
       externalId: membership.walletId,

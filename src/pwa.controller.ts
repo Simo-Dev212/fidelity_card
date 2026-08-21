@@ -6,33 +6,33 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 export class PwaController {
   @Get()
   @Header('Content-Type', 'text/html; charset=utf-8')
-  @ApiOperation({ summary: 'PWA entry point' })
+  @ApiOperation({ summary: 'PWA entry' })
   index() {
-    return this.shell('Loyalty Wallet', 'auth');
+    return this.shell('Fidélité', 'auth');
   }
 
   @Get('auth')
   @Header('Content-Type', 'text/html; charset=utf-8')
   auth() {
-    return this.shell('Sign In', 'auth');
+    return this.shell('Connexion', 'auth');
   }
 
   @Get('client')
   @Header('Content-Type', 'text/html; charset=utf-8')
   client() {
-    return this.shell('My Wallet', 'client');
+    return this.shell('Ma carte', 'client');
   }
 
   @Get('staff')
   @Header('Content-Type', 'text/html; charset=utf-8')
   staff() {
-    return this.shell('Staff Dashboard', 'staff');
+    return this.shell('Caisse', 'staff');
   }
 
   @Get('admin')
   @Header('Content-Type', 'text/html; charset=utf-8')
   admin() {
-    return this.shell('Admin Dashboard', 'admin');
+    return this.shell('Admin', 'admin');
   }
 
   private shell(title: string, route: string): string {
@@ -41,26 +41,21 @@ export class PwaController {
         ? '<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>'
         : '';
     return `<!doctype html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="theme-color" content="#000000" />
-  <link rel="manifest" href="/manifest.json" />
-  <link rel="apple-touch-icon" href="/icon-192.png" />
+  <meta name="theme-color" content="#0c0c0e" />
   <title>${title}</title>
-  <style>${CSS}</style>
-  ${qrLib}
+  <link rel="stylesheet" href="/public/app.css" />
 </head>
 <body>
   <div id="app"></div>
-  <script>
-    window.__ROUTE__ = ${JSON.stringify(route)};
-    window.__TITLE__ = ${JSON.stringify(title)};
-  </script>
-  <script>${JS}</script>
+  <script>window.__ROUTE__=${JSON.stringify(route)};</script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="/public/app.js"></script>
 </body>
 </html>`;
   }

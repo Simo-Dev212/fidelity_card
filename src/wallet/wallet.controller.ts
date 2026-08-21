@@ -26,6 +26,19 @@ export class WalletController {
     @Inject(APPLE_WALLET_PROVIDER) private readonly appleProvider: WalletProvider,
   ) {}
 
+  @Get('apple/status')
+  @ApiOperation({ summary: 'Apple Wallet signing status' })
+  appleStatus() {
+    const provider = this.appleProvider as { certificates?: unknown };
+    const signed = !!provider.certificates;
+    return {
+      signed,
+      message: signed
+        ? 'Apple Wallet passes will install on real iPhones'
+        : 'No Apple Developer certificates - .pkpass will download but iOS will reject install. Use on-screen QR for staff scan.',
+    };
+  }
+
   private async assertCanAccessMembership(
     membershipId: string,
     user: Authed,
@@ -34,13 +47,8 @@ export class WalletController {
       where: { id: membershipId },
       select: { userId: true, companyId: true },
     });
-    if (!membership) {
-      throw new NotFoundException('Membership not found');
-    }
-    if (membership.userId === user.id) return;
-
-    if (user.role === 'ADMIN') return;
-
+    if (!membership) throw new NotFoundException('Membership not found');
+    if (membership.userId === user.id || user.role === 'ADMIN') return;
     if (user.role === 'STAFF') {
       const assignment = await this.prisma.staffAssignment.findFirst({
         where: {
@@ -51,7 +59,6 @@ export class WalletController {
       });
       if (assignment) return;
     }
-
     throw new ForbiddenException('Access denied');
   }
 
@@ -74,7 +81,7 @@ export class WalletController {
       throw new NotFoundException('Membership not found');
     }
 
-    const provider = this.appleProvider as {
+    const provider = this.appleProvider as unknown as {
       generatePkpassBuffer: (m: typeof membership) => Promise<Buffer>;
     };
     const buffer = await provider.generatePkpassBuffer(membership);
