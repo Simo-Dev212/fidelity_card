@@ -16,8 +16,9 @@ import {
     GoogleWalletProvider,
     AppleWalletProvider,
     {
+      // Primary provider for join + balance sync = Google Wallet
       provide: WALLET_PROVIDER,
-      useExisting: AppleWalletProvider,
+      useExisting: GoogleWalletProvider,
     },
     {
       provide: APPLE_WALLET_PROVIDER,

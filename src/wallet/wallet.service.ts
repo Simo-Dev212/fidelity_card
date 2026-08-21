@@ -1,8 +1,11 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { WALLET_PROVIDER } from './providers/wallet-provider.interface';
+import {
+  WALLET_PROVIDER,
+  APPLE_WALLET_PROVIDER,
+} from './providers/wallet-provider.interface';
 import type { WalletProvider } from './providers/wallet-provider.interface';
-import { Membership, WalletPassStatus, WalletProviderType } from '@prisma/client';
+import { WalletPassStatus, WalletProviderType } from '@prisma/client';
 
 @Injectable()
 export class WalletService {
@@ -11,11 +14,13 @@ export class WalletService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(WALLET_PROVIDER) private readonly provider: WalletProvider,
+    @Inject(APPLE_WALLET_PROVIDER) private readonly appleProvider: WalletProvider,
   ) {}
 
   /**
-   * Create Google (or future Apple) pass for a newly created membership.
-   * Returns the saveUrl that the frontend / response should give to the user.
+   * Create Google pass for a newly created membership.
+   * Returns the Google saveUrl the frontend shows to the user.
+   * Apple .pkpass is generated on-demand via GET /wallet/apple/:id/download.
    */
   async createPassForMembership(membershipId: string) {
     const membership = await this.prisma.membership.findUniqueOrThrow({
@@ -30,7 +35,7 @@ export class WalletService {
     const result = await this.provider.createPass(membership);
 
     await this.prisma.walletPass.upsert({
-   where: { membershipId: membership.id },
+      where: { membershipId: membership.id },
       create: {
         membershipId: membership.id,
         companyId: membership.companyId,
@@ -72,7 +77,9 @@ export class WalletService {
     });
 
     if (!membership.walletPass) {
-      this.logger.warn(`No wallet pass for membership ${membershipId}, skipping sync`);
+      this.logger.warn(
+        `No wallet pass for membership ${membershipId}, skipping sync`,
+      );
       return;
     }
 
@@ -101,9 +108,9 @@ export class WalletService {
       throw err;
     }
   }
+
   /**
-   * Always return a freshly signed saveUrl JWT.
-   * Updates walletPass.saveUrl in DB so the latest link is stored.
+   * Always return a freshly signed Google saveUrl JWT.
    * Safe to call for existing memberships (does not recreate the Google object).
    */
   async regenerateSaveUrlForMembership(membershipId: string): Promise<string> {
@@ -122,9 +129,7 @@ export class WalletService {
       return result.saveUrl;
     }
 
-    // Local const → TypeScript narrows correctly (no more red underline on .id)
     const walletPass = membership.walletPass;
-
     const saveUrl = this.provider.getSaveUrl(membership);
 
     await this.prisma.walletPass.update({
@@ -135,11 +140,7 @@ export class WalletService {
       },
     });
 
-    this.logger.log(
-      `Regenerated saveUrl JWT for membership ${membershipId}`,
-    );
-
+    this.logger.log(`Regenerated saveUrl JWT for membership ${membershipId}`);
     return saveUrl;
   }
-    }
-
+}

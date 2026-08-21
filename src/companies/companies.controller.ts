@@ -5,6 +5,7 @@ import {
   Body,
   Param,
   UseGuards,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { CompaniesService } from './companies.service';
@@ -29,12 +30,6 @@ class CreateCompanyDto {
 export class CompaniesController {
   constructor(private readonly companiesService: CompaniesService) {}
 
-  @Get(':slug')
-  @ApiOperation({ summary: 'Find company by slug (public)' })
-  findBySlug(@Param('slug') slug: string) {
-    return this.companiesService.findBySlug(slug);
-  }
-
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @RequireRoles('ADMIN')
@@ -51,15 +46,6 @@ export class CompaniesController {
   @ApiOperation({ summary: 'Create company (admin)' })
   create(@Body() dto: CreateCompanyDto) {
     return this.companiesService.create(dto);
-  }
-
-  @Post(':id/update')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @RequireRoles('ADMIN')
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Update company (admin)' })
-  update(@Param('id') id: string, @Body() dto: Record<string, any>) {
-    return this.companiesService.update(id, dto);
   }
 
   @Get(':id/stats')
@@ -96,5 +82,25 @@ export class CompaniesController {
   @ApiOperation({ summary: 'Company staff assignments (admin)' })
   staff(@Param('id') id: string) {
     return this.companiesService.getStaff(id);
+  }
+
+  @Post(':id/update')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @RequireRoles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update company branding (admin)' })
+  update(@Param('id') id: string, @Body() dto: Record<string, any>) {
+    return this.companiesService.update(id, dto);
+  }
+
+  /** Resolve by id (cuid) or slug — used by admin detail + public join previews */
+  @Get(':idOrSlug')
+  @ApiOperation({ summary: 'Find company by id or slug' })
+  async findOne(@Param('idOrSlug') idOrSlug: string) {
+    const byId = await this.companiesService.findById(idOrSlug);
+    if (byId) return byId;
+    const bySlug = await this.companiesService.findBySlug(idOrSlug);
+    if (bySlug) return bySlug;
+    throw new NotFoundException('Company not found');
   }
 }
